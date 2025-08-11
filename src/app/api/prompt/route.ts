@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 const validRoles = ["user", "model"];
 
 interface Message {
-  role: 'user' | 'model';
+  role: "user" | "model";
   content: string;
   memory: string;
 }
@@ -15,13 +15,16 @@ function filterValidMessages(messages: Message[]) {
 }
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 export async function POST(req: NextRequest) {
   try {
     const { messages } = await req.json();
     if (!messages || !Array.isArray(messages)) {
-      return NextResponse.json({ error: "No messages provided." }, { status: 400 });
+      return NextResponse.json(
+        { error: "No messages provided." },
+        { status: 400 }
+      );
     }
 
     // Filter only valid roles
@@ -30,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     function buildSystemInstruction(messages: Message[]) {
       if (!messages || messages.length === 0) return "Please provide messages";
-      
+
       const lastMessage = messages[messages.length - 1];
       return `You are a helpful AI assistant. Please format your response using markdown-like syntax for better readability:
 
@@ -47,22 +50,27 @@ Please provide a clear, well-formatted response that is easy to read and underst
     }
 
     const systemInstruction = buildSystemInstruction(filteredMessages);
-    const result = await model.generateContent({ 
+    const result = await model.generateContent({
       systemInstruction,
-      contents: formattedMessages 
+      contents: formattedMessages,
     });
 
     if (!result || !result.response) {
       console.error("error in LLM model ", result);
-      return NextResponse.json({ error: "No response Generated from LLM" }, { status: 500 });
+      return NextResponse.json(
+        { error: "No response Generated from LLM" },
+        { status: 500 }
+      );
     }
 
     const response = result.response;
     const text = response.text();
     return NextResponse.json({ text });
-
   } catch (error) {
     console.error(`Error Generating Content`, error);
-    return NextResponse.json({ error: 'Something went wrong'}, { status: 500 });
+    return NextResponse.json(
+      { error: "Something went wrong" },
+      { status: 500 }
+    );
   }
-} 
+}
