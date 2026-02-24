@@ -1,15 +1,4 @@
-// utils/formatMessages.ts
-
-interface Message {
-  role: 'user' | 'model';
-  content: string;
-  memory: string;
-}
-
-interface GeminiMessage {
-  role: 'user' | 'model';
-  parts: { text: string }[];
-}
+import { Message, GeminiMessage } from "@/types/message";
 
 export function formatMessagesForGemini(messages: Message[]): GeminiMessage[] {
   return messages.map((msg) => ({

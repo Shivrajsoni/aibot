@@ -1,25 +1,24 @@
 import { formatMessagesForGemini } from "@/utils/formatMessages";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { buildSystemInstruction } from "@/utils/systemInstruction";
+import { generateWithRetry } from "@/lib/ai-service";
 import { NextRequest, NextResponse } from "next/server";
+import { Message } from "@/types/message";
 
-const validRoles = ["user", "model"];
-
-interface Message {
-  role: "user" | "model";
-  content: string;
-  memory: string;
-}
+const VALID_ROLES = ["user", "model"] as const;
+const MAX_CONTEXT_MESSAGES = 10;
 
 function filterValidMessages(messages: Message[]) {
-  return messages.filter((msg) => validRoles.includes(msg.role));
+  return messages.filter((msg) => VALID_ROLES.includes(msg.role));
 }
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+function getApiKey() {
+  return process.env.GEMINI_API_KEY;
+}
 
 export async function POST(req: NextRequest) {
   try {
     const { messages } = await req.json();
+
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json(
         { error: "No messages provided." },
@@ -27,49 +26,36 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Filter only valid roles
     const filteredMessages = filterValidMessages(messages);
-    const formattedMessages = formatMessagesForGemini(filteredMessages);
-
-    function buildSystemInstruction(messages: Message[]) {
-      if (!messages || messages.length === 0) return "Please provide messages";
-
-      const lastMessage = messages[messages.length - 1];
-      return `You are a helpful AI assistant. Please format your response using markdown-like syntax for better readability:
-
-1. Use headings with # symbols (e.g., # Main Heading, ## Subheading)
-2. Use code blocks with triple backticks for code examples
-3. Use single backticks for inline code or technical terms
-4. Break down complex information into sections with appropriate headings
-5. Use bullet points or numbered lists for step-by-step instructions
-6. Keep paragraphs concise and well-structured
-
-The user's memory context is: ${lastMessage.memory}
-
-Please provide a clear, well-formatted response that is easy to read and understand.`.trim();
-    }
-
-    const systemInstruction = buildSystemInstruction(filteredMessages);
-    const result = await model.generateContent({
-      systemInstruction,
-      contents: formattedMessages,
-    });
-
-    if (!result || !result.response) {
-      console.error("error in LLM model ", result);
+    
+    if (filteredMessages.length === 0) {
       return NextResponse.json(
-        { error: "No response Generated from LLM" },
-        { status: 500 }
+        { error: "No valid messages after filtering." },
+        { status: 400 }
       );
     }
 
-    const response = result.response;
-    const text = response.text();
-    return NextResponse.json({ text });
+    const recentMessages = filteredMessages.slice(-MAX_CONTEXT_MESSAGES);
+    const formattedMessages = formatMessagesForGemini(recentMessages);
+    const lastMemory = recentMessages[recentMessages.length - 1]?.memory || "No context available";
+    const systemInstruction = buildSystemInstruction(lastMemory);
+
+    const apiKey = getApiKey();
+    
+    const result = await generateWithRetry({
+      systemInstruction,
+      contents: formattedMessages,
+    }, apiKey);
+
+    return NextResponse.json({ 
+      text: result.text,
+      provider: result.provider 
+    });
   } catch (error) {
-    console.error(`Error Generating Content`, error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Error generating content:", message);
     return NextResponse.json(
-      { error: "Something went wrong" },
+      { error: message },
       { status: 500 }
     );
   }

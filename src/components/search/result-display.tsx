@@ -12,7 +12,7 @@ interface ResultDisplayProps {
   isLoading: boolean;
 }
 
-function CodeBlock({ node, inline, className, children, ...props }: any) {
+function CodeBlock({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode }) {
   const [isCopied, setIsCopied] = useState(false);
   const match = /language-(\w+)/.exec(className || '');
   const codeString = String(children).replace(/\n$/, '');
@@ -62,10 +62,10 @@ export function ResultDisplay({ result, isLoading }: ResultDisplayProps) {
           <div className="prose prose-sm max-w-none dark:prose-invert">
             <ReactMarkdown
               components={{
-                h1: ({ node, ...props }) => <h1 className="text-2xl font-bold mb-4" {...props} />,
-                h2: ({ node, ...props }) => <h2 className="text-xl font-bold mb-4" {...props} />,
-                h3: ({ node, ...props }) => <h3 className="text-lg font-bold mb-4" {...props} />,
-                p: ({ node, ...props }) => <p className="mb-4 leading-relaxed" {...props} />,
+                h1: (props) => <h1 className="text-2xl font-bold mb-4" {...props} />,
+                h2: (props) => <h2 className="text-xl font-bold mb-4" {...props} />,
+                h3: (props) => <h3 className="text-lg font-bold mb-4" {...props} />,
+                p: (props) => <p className="mb-4 leading-relaxed" {...props} />,
                 code: CodeBlock,
               }}
             >
