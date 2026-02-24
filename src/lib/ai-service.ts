@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-export type ModelProvider = "gemini" | "ollama" | "fallback";
+export type ModelProvider = "gemini" | "groq" | "deepseek" | "fallback";
 
 export interface AIConfig {
   provider: ModelProvider;
@@ -14,6 +14,8 @@ export interface GenerateOptions {
     role: string;
     parts: Array<{ text: string }>;
   }>;
+  model?: string;
+  apiKey?: string;
 }
 
 export interface GenerationResult {
@@ -92,10 +94,12 @@ export async function generateWithGemini(
   modelName: string = "gemini-2.0-flash"
 ): Promise<GenerationResult> {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: modelName });
+  const model = genAI.getGenerativeModel({ 
+    model: modelName,
+    systemInstruction
+  });
 
   const result = await model.generateContent({
-    systemInstruction,
     contents,
   });
 
@@ -106,6 +110,97 @@ export async function generateWithGemini(
   return {
     text: result.response.text(),
     provider: "gemini",
+  };
+}
+
+export async function generateWithGroq(
+  systemInstruction: string,
+  contents: Array<{ role: string; parts: Array<{ text: string }> }>,
+  apiKey: string,
+  modelName: string = "llama-3.3-70b-versatile"
+): Promise<GenerationResult> {
+  const messages = contents.map(msg => ({
+    role: msg.role === "model" ? "assistant" : msg.role,
+    content: msg.parts.map(p => p.text).join("")
+  }));
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: modelName,
+      messages: [
+        { role: "system", content: systemInstruction },
+        ...messages
+      ],
+      temperature: 0.7,
+      max_tokens: 8192,
+      stream: false
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Groq API error: ${response.status} - ${error}`);
+  }
+
+  const data = await response.json();
+  
+  if (!data.choices?.[0]?.message?.content) {
+    throw new Error("No response from Groq");
+  }
+
+  return {
+    text: data.choices[0].message.content,
+    provider: "groq",
+  };
+}
+
+export async function generateWithDeepSeek(
+  systemInstruction: string,
+  contents: Array<{ role: string; parts: Array<{ text: string }> }>,
+  apiKey: string,
+  modelName: string = "deepseek-reasoner"
+): Promise<GenerationResult> {
+  const messages = contents.map(msg => ({
+    role: msg.role === "model" ? "assistant" : msg.role,
+    content: msg.parts.map(p => p.text).join("")
+  }));
+
+  const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: modelName,
+      messages: [
+        { role: "system", content: systemInstruction },
+        ...messages
+      ],
+      temperature: 0.7,
+      max_tokens: 8192
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`DeepSeek API error: ${response.status} - ${error}`);
+  }
+
+  const data = await response.json();
+  
+  if (!data.choices?.[0]?.message?.content) {
+    throw new Error("No response from DeepSeek");
+  }
+
+  return {
+    text: data.choices[0].message.content,
+    provider: "deepseek",
   };
 }
 
@@ -152,11 +247,13 @@ Would you like me to share a random fact or suggestion?`,
 
 export async function generateWithRetry(
   options: GenerateOptions,
-  apiKey?: string
+  apiKey?: string,
+  modelId?: string
 ): Promise<GenerationResult> {
   const trimmedKey = apiKey?.trim() || "";
+  const model = options.model || modelId || "gemini-2.0-flash";
   
-  console.log("API Key present:", !!trimmedKey, "Key starts with:", trimmedKey.substring(0, 10));
+  console.log("Using model:", model, "API Key present:", !!trimmedKey);
   
   if (!trimmedKey || trimmedKey === "" || trimmedKey.includes("your_")) {
     console.log("No valid API key, using fallback response");
@@ -166,17 +263,49 @@ export async function generateWithRetry(
   }
 
   try {
-    console.log("Attempting to call Gemini API...");
-    const result = await generateWithGemini(
-      options.systemInstruction,
-      options.contents,
-      trimmedKey
-    );
-    console.log("Gemini API success!");
-    return result;
+    if (model.startsWith("gemini-")) {
+      console.log("Attempting to call Gemini API...");
+      const result = await generateWithGemini(
+        options.systemInstruction,
+        options.contents,
+        trimmedKey,
+        model
+      );
+      console.log("Gemini API success!");
+      return result;
+    } else if (model.startsWith("llama-") || model.startsWith("mixtral-") || model.startsWith("gemma2-")) {
+      console.log("Attempting to call Groq API...");
+      const result = await generateWithGroq(
+        options.systemInstruction,
+        options.contents,
+        trimmedKey,
+        model
+      );
+      console.log("Groq API success!");
+      return result;
+    } else if (model.startsWith("deepseek-")) {
+      console.log("Attempting to call DeepSeek API...");
+      const result = await generateWithDeepSeek(
+        options.systemInstruction,
+        options.contents,
+        trimmedKey,
+        model
+      );
+      console.log("DeepSeek API success!");
+      return result;
+    } else {
+      console.log("Unknown model, using Gemini as fallback...");
+      const result = await generateWithGemini(
+        options.systemInstruction,
+        options.contents,
+        trimmedKey,
+        model
+      );
+      return result;
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.log("Gemini API error:", errorMessage);
+    console.log("API error:", errorMessage);
     
     if (errorMessage.includes("403") || errorMessage.includes("leaked")) {
       console.log("API key reported as leaked, using fallback");
@@ -185,10 +314,10 @@ export async function generateWithRetry(
       );
     }
     
-    if (errorMessage.includes("429") || errorMessage.includes("quota")) {
+    if (errorMessage.includes("429") || errorMessage.includes("quota") || errorMessage.includes("rate_limit")) {
       console.log("Rate limited, using fallback");
       return {
-        text: "You've hit the rate limit. Using offline mode for now. " + getRandomFallback(),
+        text: "⚠️ API Rate Limit Exceeded\n\nYour API key has hit its free tier quota. Options:\n\n1. Wait 1-2 minutes and try again\n2. Get a new API key from the provider\n3. Use offline mode features below:\n\n" + getRandomFallback(),
         provider: "fallback",
       };
     }

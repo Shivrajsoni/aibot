@@ -52,11 +52,11 @@ export function Header() {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="flex items-center gap-3"
           >
-            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-green-900/30 border border-green-500/30">
-              <Terminal className="h-5 w-5 text-green-400" />
+            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-green-400/20 to-green-600/20 dark:from-green-500/30 dark:to-green-700/30 border border-green-400/30 dark:border-green-500/30">
+              <Terminal className="h-5 w-5 text-green-600 dark:text-green-400" />
             </div>
-            <span className="text-green-400 font-bold text-xl tracking-wide font-mono">
-              erite<span className="text-green-500">_</span>
+            <span className="text-green-600 dark:text-green-400 font-bold text-xl tracking-wide font-mono">
+              erite<span className="text-green-500 dark:text-green-400">_</span>
             </span>
           </motion.div>
           
@@ -71,7 +71,7 @@ export function Header() {
           </motion.div>
 
           <button 
-            className="md:hidden p-2"
+            className="md:hidden p-2 text-gray-600 dark:text-gray-400"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           >
             {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -82,7 +82,7 @@ export function Header() {
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
-            className="md:hidden border-t p-4 flex flex-col gap-4"
+            className="md:hidden border-t p-4 flex flex-col gap-4 bg-background"
           >
             <MemoryCard />
             <ThemeToggle />
